@@ -42,3 +42,10 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
+
+# One-time bench configuration is handled during environment bootstrap.
+# Disable it for continuous Argo CD reconciliation because the upstream
+# chart generates a timestamped Job name on every render.
+jobs:
+  configure:
+    enabled: false
