@@ -1,0 +1,14 @@
+jobs:
+  createSite:
+    enabled: true
+    forceCreate: false
+    siteName: "dev-erpnext.uxe.ai"
+
+    adminExistingSecret: "erpnext-keyvault-secrets"
+    adminExistingSecretKey: "admin-password"
+
+    installApps:
+      - erpnext
+
+    dbType: "mariadb"
+    backoffLimit: 1

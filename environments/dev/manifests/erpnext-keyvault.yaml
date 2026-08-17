@@ -1,0 +1,38 @@
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: erpnext-keyvault
+  namespace: erpnext
+spec:
+  provider: azure
+
+  secretObjects:
+    - secretName: erpnext-keyvault-secrets
+      type: Opaque
+      data:
+        - objectName: erpnext-db-root-password
+          key: db-root-password
+        - objectName: erpnext-admin-password
+          key: admin-password
+        - objectName: erpnext-encryption-key
+          key: encryption-key
+
+  parameters:
+    usePodIdentity: "false"
+    useVMManagedIdentity: "true"
+    userAssignedIdentityID: ""
+    keyvaultName: "kv-uxe-dev-uaen"
+
+    objects: |
+      array:
+        - |
+          objectName: erpnext-db-root-password
+          objectType: secret
+        - |
+          objectName: erpnext-admin-password
+          objectType: secret
+        - |
+          objectName: erpnext-encryption-key
+          objectType: secret
+
+    tenantId: "7517b6a4-d99d-4f35-b7c5-640bca37a902"

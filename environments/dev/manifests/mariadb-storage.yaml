@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: erpnext-mariadb-pv
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: mariadb-local
+  hostPath:
+    path: /db-disk/mariadb
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: erpnext-mariadb
+  namespace: erpnext
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: mariadb-local
+  resources:
+    requests:
+      storage: 50Gi
