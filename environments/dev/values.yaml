@@ -36,6 +36,7 @@ ingress:
 
   annotations:
     kubernetes.io/ingress.class: nginx
+    argocd.argoproj.io/sync-wave: "20"
 
   hosts:
     - host: dev-erpnext.uxe.ai

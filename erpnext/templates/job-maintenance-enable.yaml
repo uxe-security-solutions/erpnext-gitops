@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: erpnext-maintenance-enable
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-20"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+
+spec:
+  backoffLimit: 1
+
+  template:
+    spec:
+      serviceAccountName: erpnext-maintenance-operator
+      restartPolicy: Never
+
+      containers:
+        - name: maintenance-enable
+          image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - /bin/sh
+            - -c
+
+          args:
+            - |
+              set -eu
+
+              echo "Enabling ERPNext maintenance mode..."
+
+              kubectl patch ingress dev-erpnext \
+                -n {{ .Release.Namespace }} \
+                --type=json \
+                -p='[
+                  {
+                    "op":"replace",
+                    "path":"/spec/rules/0/http/paths/0/backend/service/name",
+                    "value":"erpnext-maintenance"
+                  },
+                  {
+                    "op":"replace",
+                    "path":"/spec/rules/0/http/paths/0/backend/service/port/number",
+                    "value":80
+                  }
+                ]'
+
+              echo "Ingress now points to maintenance service."
+
+              kubectl get ingress dev-erpnext \
+                -n {{ .Release.Namespace }} \
+                -o jsonpath='{.spec.rules[0].http.paths[0].backend.service.name}:{.spec.rules[0].http.paths[0].backend.service.port.number}{"\n"}'
