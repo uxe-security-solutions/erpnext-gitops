@@ -89,7 +89,7 @@ data:
         async function getState() {
           try {
             const response = await fetch(
-              "/maintenance.json?t=" + Date.now(),
+              "/runtime/maintenance.json?t=" + Date.now(),
               { cache: "no-store" }
             );
 

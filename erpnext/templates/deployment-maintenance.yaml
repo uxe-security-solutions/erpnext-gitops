@@ -30,8 +30,7 @@ spec:
               subPath: index.html
 
             - name: maintenance-state
-              mountPath: /usr/share/nginx/html/maintenance.json
-              subPath: maintenance.json
+              mountPath: /usr/share/nginx/html/runtime
 
       volumes:
         - name: maintenance-page
