@@ -59,7 +59,15 @@ spec:
 
               echo
               echo "========================================"
-              echo "Migration completed successfully"
+              echo "Clearing ERPNext caches"
+              echo "========================================"
+
+              bench --site "${SITE}" clear-cache
+              bench --site "${SITE}" clear-website-cache
+
+              echo
+              echo "========================================"
+              echo "Migration and cache clearing completed successfully"
               echo "========================================"
 
           volumeMounts:
