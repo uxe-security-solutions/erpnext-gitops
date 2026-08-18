@@ -1,6 +1,6 @@
 image:
-  repository: frappe/erpnext
-  tag: v16.20.1
+  repository: cruxeplatformuaen01.azurecr.io/erpnext/dev
+  tag: 8029c310327015edbc7120dc304966ea22df1865
   pullPolicy: IfNotPresent
 
 persistence:
