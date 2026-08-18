@@ -14,6 +14,8 @@ spec:
     metadata:
       labels:
         app: erpnext-maintenance
+      annotations:
+        checksum/maintenance-page: {{ include (print $.Template.BasePath "/configmap-maintenance-page.yaml") . | sha256sum }}
 
     spec:
       containers:
