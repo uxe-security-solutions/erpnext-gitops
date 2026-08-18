@@ -1,6 +1,6 @@
 image:
   repository: cruxeplatformuaen01.azurecr.io/erpnext/dev
-  tag: 8029c310327015edbc7120dc304966ea22df1865
+  tag: d4b2ede8a60885c0bdfff100613ca1dd1192b51a
   pullPolicy: IfNotPresent
 
 persistence:
