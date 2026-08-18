@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: erpnext-maintenance-page
+  namespace: {{ .Release.Namespace }}
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>ERPNext Maintenance</title>
+
+      <style>
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: Arial, Helvetica, sans-serif;
+          background: #f5f7fa;
+          color: #1f2937;
+        }
+
+        .card {
+          width: min(92%, 620px);
+          padding: 48px;
+          background: #ffffff;
+          border-radius: 16px;
+          box-shadow: 0 15px 45px rgba(0, 0, 0, 0.08);
+          text-align: center;
+        }
+
+        h1 {
+          margin-top: 0;
+          font-size: 32px;
+        }
+
+        .message {
+          font-size: 17px;
+          color: #6b7280;
+          line-height: 1.6;
+        }
+
+        .countdown {
+          margin: 32px 0;
+          font-size: 46px;
+          font-weight: 700;
+          letter-spacing: 2px;
+        }
+
+        .small {
+          margin-top: 20px;
+          color: #9ca3af;
+          font-size: 13px;
+        }
+      </style>
+    </head>
+
+    <body>
+      <div class="card">
+        <h1>Scheduled Maintenance</h1>
+
+        <div class="message">
+          ERPNext is currently being updated.<br>
+          Please wait while we complete the maintenance.
+        </div>
+
+        <div id="countdown" class="countdown">
+          --:--
+        </div>
+
+        <div id="status" class="message">
+          Estimated time remaining
+        </div>
+
+        <div class="small">
+          This page will automatically return to ERPNext when maintenance is complete.
+        </div>
+      </div>
+
+      <script>
+        async function getState() {
+          try {
+            const response = await fetch(
+              "/maintenance.json?t=" + Date.now(),
+              { cache: "no-store" }
+            );
+
+            return await response.json();
+          } catch (e) {
+            return { endEpoch: 0 };
+          }
+        }
+
+        async function startCountdown() {
+          const state = await getState();
+          const countdown = document.getElementById("countdown");
+          const status = document.getElementById("status");
+
+          function render() {
+            const now = Math.floor(Date.now() / 1000);
+            let remaining = state.endEpoch - now;
+
+            if (!state.endEpoch || remaining <= 0) {
+              countdown.textContent = "00:00";
+              status.textContent = "Finalizing maintenance...";
+              return;
+            }
+
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+
+            countdown.textContent =
+              String(minutes).padStart(2, "0") +
+              ":" +
+              String(seconds).padStart(2, "0");
+          }
+
+          render();
+          setInterval(render, 1000);
+        }
+
+        startCountdown();
+
+        // Retry the real application periodically.
+        setInterval(() => {
+          fetch("/", { method: "HEAD", cache: "no-store" })
+            .then(() => window.location.reload())
+            .catch(() => {});
+        }, 15000);
+      </script>
+    </body>
+    </html>

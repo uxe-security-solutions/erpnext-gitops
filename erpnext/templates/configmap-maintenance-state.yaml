@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: erpnext-maintenance-state
+  namespace: {{ .Release.Namespace }}
+data:
+  maintenance.json: |
+    {
+      "endEpoch": 0
+    }

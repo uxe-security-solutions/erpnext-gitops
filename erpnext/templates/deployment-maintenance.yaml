@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: erpnext-maintenance
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: erpnext-maintenance
+
+  template:
+    metadata:
+      labels:
+        app: erpnext-maintenance
+
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 80
+
+          volumeMounts:
+            - name: maintenance-page
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+
+            - name: maintenance-state
+              mountPath: /usr/share/nginx/html/maintenance.json
+              subPath: maintenance.json
+
+      volumes:
+        - name: maintenance-page
+          configMap:
+            name: erpnext-maintenance-page
+
+        - name: maintenance-state
+          configMap:
+            name: erpnext-maintenance-state

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: erpnext-maintenance
+  namespace: {{ .Release.Namespace }}
+spec:
+  selector:
+    app: erpnext-maintenance
+
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+
+  type: ClusterIP
