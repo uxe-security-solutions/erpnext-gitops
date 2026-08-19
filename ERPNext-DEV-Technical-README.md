@@ -42,39 +42,39 @@ Azure Application Gateway -> ingress-nginx -> ERPNext
 
 ## Platform Summary
 
-  --------------------------------------------------------------------------------------------
-  Component                           DEV implementation
-  ----------------------------------- --------------------------------------------------------
-  ERPNext site                        `dev-erpnext.uxe.ai`
+  -----------------------------------------------------------------------------------
+  Component                  DEV implementation
+  -------------------------- --------------------------------------------------------
+  ERPNext site               `dev-erpnext.uxe.ai`
 
-  ERPNext                             `16.32.3`
+  ERPNext                    `16.32.3`
 
-  Frappe                              `16.31.0`
+  Frappe                     `16.31.0`
 
-  K3s node                            `vm-uxe-dev-erpnext-01`
+  K3s node                   `vm-uxe-dev-erpnext-01`
 
-  K3s node IP                         `10.31.1.16`
+  K3s node IP                `10.31.1.16`
 
-  CI/CD VM                            `vm-uxe-hub-cicd-01`
+  CI/CD VM                   `vm-uxe-hub-cicd-01`
 
-  Container registry                  `cruxeplatformuaen01.azurecr.io`
+  Container registry         `cruxeplatformuaen01.azurecr.io`
 
-  ERPNext image                       `cruxeplatformuaen01.azurecr.io/erpnext/dev:<GIT_SHA>`
+  ERPNext image              `cruxeplatformuaen01.azurecr.io/erpnext/dev:<GIT_SHA>`
 
-  Azure Key Vault                     `kv-uxe-dev-uaen`
+  Azure Key Vault            `kv-uxe-dev-uaen`
 
-  Kubernetes namespace                `erpnext`
+  Kubernetes namespace       `erpnext`
 
-  Application delivery                GitHub Actions + ACR + GitOps + Argo CD
+  Application delivery       GitHub Actions + ACR + GitOps + Argo CD
 
-  North-south traffic                 Azure Application Gateway -\> ingress-nginx -\> ERPNext
+  North-south traffic        Azure Application Gateway -\> ingress-nginx -\> ERPNext
 
-  ERPNext sites storage               Local PV on `/data-disk/erpnext-sites`
+  ERPNext sites storage      Local PV on `/data-disk/erpnext-sites`
 
-  MariaDB storage                     Local PV on `/db-disk/mariadb`
+  MariaDB storage            Local PV on `/db-disk/mariadb`
 
-  NFS                                 Removed; not used by current ERPNext PVCs
-  --------------------------------------------------------------------------------------------
+  NFS                        Removed; not used by current ERPNext PVCs
+  -----------------------------------------------------------------------------------
 
 ## Repositories
 
@@ -316,22 +316,25 @@ environments/dev/manifests/erpnext-keyvault.yaml
 
 ### Argo CD Ownership Matrix
 
-  -----------------------------------------------------------------------------------------------
-  Change                                          First automation        Argo CD application
-  ----------------------------------------------- ----------------------- -----------------------
-  `erpnext-app` source                            GitHub Actions          `erpnext-dev`
-                                                                          indirectly after GitOps
-                                                                          update
+  ---------------------------------------------------------------------------------------
+  Change                                          First automation  Argo CD application
+  ----------------------------------------------- ----------------- ---------------------
+  `erpnext-app` source                            GitHub Actions    `erpnext-dev`
+                                                                    indirectly after
+                                                                    GitOps update
 
-  `erpnext-app/.github/workflows/build-dev.yml`   GitHub Actions          None directly
-                                                  configuration           
+  `erpnext-app/.github/workflows/build-dev.yml`   GitHub Actions    None directly
+                                                  configuration     
 
-  `environments/dev/values.yaml`                  Argo CD reconciliation  `erpnext-dev`
+  `environments/dev/values.yaml`                  Argo CD           `erpnext-dev`
+                                                  reconciliation    
 
-  `erpnext/templates/*.yaml`                      Argo CD reconciliation  `erpnext-dev`
+  `erpnext/templates/*.yaml`                      Argo CD           `erpnext-dev`
+                                                  reconciliation    
 
-  `environments/dev/manifests/*`                  Argo CD reconciliation  `erpnext-dev-infra`
-  -----------------------------------------------------------------------------------------------
+  `environments/dev/manifests/*`                  Argo CD           `erpnext-dev-infra`
+                                                  reconciliation    
+  ---------------------------------------------------------------------------------------
 
 ## GitOps Image Update
 
@@ -355,8 +358,10 @@ desired state and automated reconciliation can begin.
 
 ## Maintenance and Migration Deployment Sequence
 
-The application deployment includes maintenance mode and a mandatory
-pre-migration backup.
+The application deployment keeps users on the maintenance page while the
+release is being applied. The backup is taken before the application
+rollout, while database migration and cache clearing run after the new
+ERPNext image has been reconciled.
 
 ``` text
 PreSync -20
@@ -370,29 +375,51 @@ erpnext-maintenance-enable
 PreSync -10
     |
     v
-frappe-bench-erpnext-migrate
+frappe-bench-erpnext-backup
     |
-    +--> bench backup --with-files
-    +--> bench migrate
-    +--> bench clear-cache
-    +--> bench clear-website-cache
+    +--> bench --site "${SITE}" backup --with-files
     |
     v
 Sync 0
     |
-    +--> Reconcile ERPNext workloads/new image
+    v
+Reconcile ERPNext workloads / new image
+    |
+    +--> Deploy the new image from ACR
+    +--> Reconcile ERPNext runtime resources
+    |
+    v
+Sync 10
+    |
+    v
+frappe-bench-erpnext-migrate
+    |
+    +--> bench --site "${SITE}" migrate
+    +--> bench --site "${SITE}" clear-cache
+    +--> bench --site "${SITE}" clear-website-cache
     |
     v
 Sync 20
     |
     +--> Restore Git-managed ERPNext ingress backend
+    +--> frappe-bench-erpnext:8080
+    |
+    v
+Maintenance OFF
     |
     v
 ERPNext available
 ```
 
-The maintenance page is **health/deployment gated**, not based on a
-fixed countdown. It should show a message such as:
+The resulting release order is:
+
+``` text
+Maintenance ON -> Backup -> New image rollout -> Migrate -> Clear caches -> Restore ingress -> ERPNext available
+```
+
+The maintenance page is **deployment/health gated**, not based on a
+fixed countdown. It remains available during the release process instead
+of assuming maintenance will finish within a fixed number of minutes.
 
 ``` text
 Scheduled Maintenance
@@ -402,6 +429,32 @@ Maintenance in progress...
 
 The old `00:00` countdown is not required.
 
+### Backup Job
+
+Template:
+
+``` text
+erpnext/templates/job-dev-backup.yaml
+```
+
+Argo CD ordering:
+
+``` yaml
+argocd.argoproj.io/hook: PreSync
+argocd.argoproj.io/sync-wave: "-10"
+argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+```
+
+Core command:
+
+``` bash
+bench --site "${SITE}" backup --with-files
+```
+
+This job runs after maintenance is enabled and before the new
+application image is rolled out. A backup failure stops the release
+before migration proceeds.
+
 ### Migration Job
 
 Template:
@@ -410,17 +463,60 @@ Template:
 erpnext/templates/job-dev-migrate.yaml
 ```
 
+Argo CD ordering:
+
+``` yaml
+argocd.argoproj.io/hook: Sync
+argocd.argoproj.io/sync-wave: "10"
+argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+```
+
 Core commands:
 
 ``` bash
-bench --site "${SITE}" backup --with-files
 bench --site "${SITE}" migrate
 bench --site "${SITE}" clear-cache
 bench --site "${SITE}" clear-website-cache
 ```
 
-Any failure stops the hook because the script uses strict shell error
-handling.
+The migration Job uses the image configured by
+`environments/dev/values.yaml`, so when CI updates the immutable image
+SHA the migration container is rendered from that same desired
+application image.
+
+Any command failure stops the hook because the script uses strict shell
+error handling. The Git-managed ERPNext ingress is restored at Sync wave
+`20`, after the migration wave has completed successfully.
+
+### Deployment Wave Summary
+
+  -----------------------------------------------------------------------------------------------------
+  Phase                             Wave Resource / action                Purpose
+  ---------------- --------------------- -------------------------------- -----------------------------
+  PreSync                          `-20` `erpnext-maintenance-enable`     Route end users to the
+                                                                          maintenance service
+
+  PreSync                          `-10` `frappe-bench-erpnext-backup`    Create database,
+                                                                          configuration, public-file
+                                                                          and private-file backup
+
+  Sync                               `0` ERPNext workloads                Reconcile/deploy the new
+                                                                          ERPNext image
+
+  Sync                              `10` `frappe-bench-erpnext-migrate`   Run migration and clear
+                                                                          ERPNext caches using the
+                                                                          configured image
+
+  Sync                              `20` `dev-erpnext` Ingress            Restore the normal
+                                                                          `frappe-bench-erpnext:8080`
+                                                                          backend
+  -----------------------------------------------------------------------------------------------------
+
+Operational note: during a controlled release, verify that the wave-0
+ERPNext workloads can reach the health state required for Argo CD to
+continue to Sync wave `10`. If a future ERPNext release requires
+database migration before the new workload can become healthy, the
+ordering/health gating must be reviewed before forcing the sync forward.
 
 ## Maintenance Page
 
@@ -697,61 +793,63 @@ Argo CD path.
 
 ## Important Paths
 
-  ---------------------------------------------------------------------------------------------------
-  Purpose                             Path / name
-  ----------------------------------- ---------------------------------------------------------------
-  ERPNext app repository              `~/git/erpnext-app`
+  -----------------------------------------------------------------------------------------
+  Purpose                   Path / name
+  ------------------------- ---------------------------------------------------------------
+  ERPNext app repository    `~/git/erpnext-app`
 
-  GitOps repository                   `~/git/erpnext-gitops`
+  GitOps repository         `~/git/erpnext-gitops`
 
-  GitHub runner                       `/data/github-runners/erpnext-app`
+  GitHub runner             `/data/github-runners/erpnext-app`
 
-  DEV kubeconfig from CI/CD VM        `~/erpnext-dev-kubeconfig.yaml`
+  DEV kubeconfig from CI/CD `~/erpnext-dev-kubeconfig.yaml`
+  VM                        
 
-  ERPNext host backups                `/data-disk/erpnext-sites/dev-erpnext.uxe.ai/private/backups`
+  ERPNext host backups      `/data-disk/erpnext-sites/dev-erpnext.uxe.ai/private/backups`
 
-  MariaDB host data                   `/db-disk/mariadb`
+  MariaDB host data         `/db-disk/mariadb`
 
-  ERPNext sites host data             `/data-disk/erpnext-sites`
+  ERPNext sites host data   `/data-disk/erpnext-sites`
 
-  K3s registry configuration          `/etc/rancher/k3s/registries.yaml`
+  K3s registry              `/etc/rancher/k3s/registries.yaml`
+  configuration             
 
-  GitOps SSH key                      `~/.ssh/github_cicd`
+  GitOps SSH key            `~/.ssh/github_cicd`
 
-  ACR                                 `cruxeplatformuaen01.azurecr.io`
+  ACR                       `cruxeplatformuaen01.azurecr.io`
 
-  Key Vault                           `kv-uxe-dev-uaen`
-  ---------------------------------------------------------------------------------------------------
+  Key Vault                 `kv-uxe-dev-uaen`
+  -----------------------------------------------------------------------------------------
 
 ## Troubleshooting
 
-  -----------------------------------------------------------------------
-  Symptom                             Primary checks
-  ----------------------------------- -----------------------------------
-  `ImagePullBackOff` / ACR `401`      `registries.yaml`, ACR token, Key
-                                      Vault rotation state, K3s restart
+  ---------------------------------------------------------------------
+  Symptom                            Primary checks
+  ---------------------------------- ----------------------------------
+  `ImagePullBackOff` / ACR `401`     `registries.yaml`, ACR token, Key
+                                     Vault rotation state, K3s restart
 
-  GitHub Actions cannot access Docker `id azureuser`, Docker socket
-                                      ownership, runner service restart
+  GitHub Actions cannot access       `id azureuser`, Docker socket
+  Docker                             ownership, runner service restart
 
-  Argo CD shows old hook              `git show origin/dev`, Argo
-                                      manifests, hard refresh
+  Argo CD shows old hook             `git show origin/dev`, Argo
+                                     manifests, hard refresh
 
-  UI broken after upgrade             Migration cache clear, workload
-                                      rollout, browser cache
+  UI broken after upgrade            Migration cache clear, workload
+                                     rollout, browser cache
 
-  Migration Job missing               Argo sync state, hook annotations,
-                                      `BeforeHookCreation`
+  Migration Job missing              Argo sync state, hook annotations,
+                                     `BeforeHookCreation`
 
-  Migration Job failed                Job logs, pod events, DB
-                                      connectivity, backup result
+  Migration Job failed               Job logs, pod events, DB
+                                     connectivity, backup result
 
-  Wrong ERPNext version               Deployment image SHA,
-                                      `bench version`, CI build logs
+  Wrong ERPNext version              Deployment image SHA,
+                                     `bench version`, CI build logs
 
-  PVC unavailable                     PV/PVC state, host disk mount and
-                                      permissions
-  -----------------------------------------------------------------------
+  PVC unavailable                    PV/PVC state, host disk mount and
+                                     permissions
+  ---------------------------------------------------------------------
 
 ## Security Notes
 
