@@ -42,39 +42,42 @@ Azure Application Gateway -> ingress-nginx -> ERPNext
 
 ## Platform Summary
 
-  -----------------------------------------------------------------------------------
-  Component                  DEV implementation
-  -------------------------- --------------------------------------------------------
-  ERPNext site               `dev-erpnext.uxe.ai`
+  ----------------------------------------------------------------------------
+  Component           DEV implementation
+  ------------------- --------------------------------------------------------
+  ERPNext site        `dev-erpnext.uxe.ai`
 
-  ERPNext                    `16.32.3`
+  ERPNext             `16.32.3`
 
-  Frappe                     `16.31.0`
+  Frappe              `16.31.0`
 
-  K3s node                   `vm-uxe-dev-erpnext-01`
+  K3s node            `vm-uxe-dev-erpnext-01`
 
-  K3s node IP                `10.31.1.16`
+  K3s node IP         `10.31.1.16`
 
-  CI/CD VM                   `vm-uxe-hub-cicd-01`
+  CI/CD VM            `vm-uxe-hub-cicd-01`
 
-  Container registry         `cruxeplatformuaen01.azurecr.io`
+  Container registry  `cruxeplatformuaen01.azurecr.io`
 
-  ERPNext image              `cruxeplatformuaen01.azurecr.io/erpnext/dev:<GIT_SHA>`
+  ERPNext image       `cruxeplatformuaen01.azurecr.io/erpnext/dev:<GIT_SHA>`
 
-  Azure Key Vault            `kv-uxe-dev-uaen`
+  Azure Key Vault     `kv-uxe-dev-uaen`
 
-  Kubernetes namespace       `erpnext`
+  Kubernetes          `erpnext`
+  namespace           
 
-  Application delivery       GitHub Actions + ACR + GitOps + Argo CD
+  Application         GitHub Actions + ACR + GitOps + Argo CD
+  delivery            
 
-  North-south traffic        Azure Application Gateway -\> ingress-nginx -\> ERPNext
+  North-south traffic Azure Application Gateway -\> ingress-nginx -\> ERPNext
 
-  ERPNext sites storage      Local PV on `/data-disk/erpnext-sites`
+  ERPNext sites       Local PV on `/data-disk/erpnext-sites`
+  storage             
 
-  MariaDB storage            Local PV on `/db-disk/mariadb`
+  MariaDB storage     Local PV on `/db-disk/mariadb`
 
-  NFS                        Removed; not used by current ERPNext PVCs
-  -----------------------------------------------------------------------------------
+  NFS                 Removed; not used by current ERPNext PVCs
+  ----------------------------------------------------------------------------
 
 ## Repositories
 
@@ -316,25 +319,25 @@ environments/dev/manifests/erpnext-keyvault.yaml
 
 ### Argo CD Ownership Matrix
 
-  ---------------------------------------------------------------------------------------
-  Change                                          First automation  Argo CD application
-  ----------------------------------------------- ----------------- ---------------------
-  `erpnext-app` source                            GitHub Actions    `erpnext-dev`
-                                                                    indirectly after
-                                                                    GitOps update
+  --------------------------------------------------------------------------------------
+  Change                                          First automation Argo CD application
+  ----------------------------------------------- ---------------- ---------------------
+  `erpnext-app` source                            GitHub Actions   `erpnext-dev`
+                                                                   indirectly after
+                                                                   GitOps update
 
-  `erpnext-app/.github/workflows/build-dev.yml`   GitHub Actions    None directly
-                                                  configuration     
+  `erpnext-app/.github/workflows/build-dev.yml`   GitHub Actions   None directly
+                                                  configuration    
 
-  `environments/dev/values.yaml`                  Argo CD           `erpnext-dev`
-                                                  reconciliation    
+  `environments/dev/values.yaml`                  Argo CD          `erpnext-dev`
+                                                  reconciliation   
 
-  `erpnext/templates/*.yaml`                      Argo CD           `erpnext-dev`
-                                                  reconciliation    
+  `erpnext/templates/*.yaml`                      Argo CD          `erpnext-dev`
+                                                  reconciliation   
 
-  `environments/dev/manifests/*`                  Argo CD           `erpnext-dev-infra`
-                                                  reconciliation    
-  ---------------------------------------------------------------------------------------
+  `environments/dev/manifests/*`                  Argo CD          `erpnext-dev-infra`
+                                                  reconciliation   
+  --------------------------------------------------------------------------------------
 
 ## GitOps Image Update
 
@@ -490,27 +493,27 @@ error handling. The Git-managed ERPNext ingress is restored at Sync wave
 
 ### Deployment Wave Summary
 
-  -----------------------------------------------------------------------------------------------------
-  Phase                             Wave Resource / action                Purpose
-  ---------------- --------------------- -------------------------------- -----------------------------
-  PreSync                          `-20` `erpnext-maintenance-enable`     Route end users to the
-                                                                          maintenance service
+  -------------------------------------------------------------------------------------
+  Phase             Wave Resource / action                Purpose
+  --------- ------------ -------------------------------- -----------------------------
+  PreSync          `-20` `erpnext-maintenance-enable`     Route end users to the
+                                                          maintenance service
 
-  PreSync                          `-10` `frappe-bench-erpnext-backup`    Create database,
-                                                                          configuration, public-file
-                                                                          and private-file backup
+  PreSync          `-10` `frappe-bench-erpnext-backup`    Create database,
+                                                          configuration, public-file
+                                                          and private-file backup
 
-  Sync                               `0` ERPNext workloads                Reconcile/deploy the new
-                                                                          ERPNext image
+  Sync               `0` ERPNext workloads                Reconcile/deploy the new
+                                                          ERPNext image
 
-  Sync                              `10` `frappe-bench-erpnext-migrate`   Run migration and clear
-                                                                          ERPNext caches using the
-                                                                          configured image
+  Sync              `10` `frappe-bench-erpnext-migrate`   Run migration and clear
+                                                          ERPNext caches using the
+                                                          configured image
 
-  Sync                              `20` `dev-erpnext` Ingress            Restore the normal
-                                                                          `frappe-bench-erpnext:8080`
-                                                                          backend
-  -----------------------------------------------------------------------------------------------------
+  Sync              `20` `dev-erpnext` Ingress            Restore the normal
+                                                          `frappe-bench-erpnext:8080`
+                                                          backend
+  -------------------------------------------------------------------------------------
 
 Operational note: during a controlled release, verify that the wave-0
 ERPNext workloads can reach the health state required for Argo CD to
@@ -658,6 +661,856 @@ Credential rotation must update all consumers before the previous
 credential/slot is invalidated. Otherwise new K3s image pulls can fail
 even though already-running containers continue working.
 
+## ACR Credential Expiry Monitoring and Rotation
+
+K3s requires authenticated access to Azure Container Registry (ACR) to
+pull ERPNext images from:
+
+``` text
+cruxeplatformuaen01.azurecr.io
+```
+
+The DEV ACR pull credential lifecycle is monitored from the CI/CD VM and
+stored in Azure Key Vault.
+
+### Key Vault Configuration
+
+Azure Key Vault:
+
+``` text
+kv-uxe-dev-uaen
+```
+
+Primary credential secret:
+
+``` text
+acr-k3s-erpnext-dev-password
+```
+
+Related active-slot state:
+
+``` text
+acr-k3s-erpnext-dev-active-slot
+```
+
+The password secret stores the managed ACR pull credential. The
+active-slot value is used by the credential-rotation design to track the
+active ACR token credential slot.
+
+No password or token value should be committed to Git or printed into
+shared logs.
+
+### Credential Expiration
+
+The ACR password secret is configured with an explicit expiration date.
+The current lifecycle uses a 180-day credential validity period.
+
+Example:
+
+``` bash
+EXPIRY=$(date -u -d '+180 days' +'%Y-%m-%dT%H:%M:%SZ')
+
+az keyvault secret set-attributes \
+  --vault-name kv-uxe-dev-uaen \
+  --name acr-k3s-erpnext-dev-password \
+  --expires "$EXPIRY"
+```
+
+Verify expiration:
+
+``` bash
+az keyvault secret show \
+  --vault-name kv-uxe-dev-uaen \
+  --name acr-k3s-erpnext-dev-password \
+  --query 'attributes.expires || attributes.expiresOn' \
+  -o tsv
+```
+
+Setting a Key Vault expiry attribute does **not** itself rotate the ACR
+credential. Rotation is handled by the scripts described below.
+
+### Expiry Check Script
+
+Installed on:
+
+``` text
+vm-uxe-hub-cicd-01
+```
+
+Script:
+
+``` text
+/usr/local/sbin/check-erpnext-acr-token-expiry.sh
+```
+
+Verified implementation:
+
+``` bash
+#!/bin/bash
+set -euo pipefail
+
+KV="kv-uxe-dev-uaen"
+SECRET="acr-k3s-erpnext-dev-password"
+THRESHOLD_DAYS=30
+
+echo "Checking ERPNext K3s ACR credential..."
+
+timeout 30 az login --identity --output none
+
+EXPIRY=$(timeout 30 az keyvault secret show \
+  --vault-name "$KV" \
+  --name "$SECRET" \
+  --query 'attributes.expires || attributes.expiresOn' \
+  -o tsv)
+
+if [ -z "$EXPIRY" ]; then
+  echo "ERROR: Key Vault secret expiry is not configured."
+  exit 1
+fi
+
+EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s)
+NOW_EPOCH=$(date -u +%s)
+
+DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+
+echo "Expiry: $EXPIRY"
+echo "Days remaining: $DAYS_LEFT"
+
+if [ "$DAYS_LEFT" -lt 0 ]; then
+  echo "ERROR: ACR credential has expired."
+  exit 1
+fi
+
+if [ "$DAYS_LEFT" -le "$THRESHOLD_DAYS" ]; then
+  echo "Credential is within rotation window."
+  /usr/local/sbin/rotate-erpnext-acr-token.sh
+else
+  echo "No rotation required."
+fi
+```
+
+### Expiry Check Logic
+
+``` text
+Start
+  |
+  v
+Authenticate to Azure using VM Managed Identity
+  |
+  v
+Read Key Vault secret expiry
+  |
+  +--> Missing expiry -> ERROR / exit 1
+  |
+  v
+Calculate remaining days
+  |
+  +--> Already expired -> ERROR / exit 1
+  |
+  +--> More than 30 days -> No rotation required
+  |
+  `--> 30 days or less -> Run rotate-erpnext-acr-token.sh
+```
+
+The configured rotation threshold is:
+
+``` text
+30 days
+```
+
+Azure CLI operations are wrapped with `timeout 30` to prevent the
+systemd job from hanging indefinitely during Azure login or Key Vault
+access.
+
+### Managed Identity Authentication
+
+The check does not use a stored Azure username/password or
+service-principal secret.
+
+It authenticates using:
+
+``` bash
+az login --identity --output none
+```
+
+### Rotation Script
+
+When the remaining credential lifetime is 30 days or less, the
+expiry-check script invokes:
+
+``` text
+/usr/local/sbin/rotate-erpnext-acr-token.sh
+```
+
+The rotation implementation uses the two password slots associated with
+the ACR token:
+
+``` text
+password1
+password2
+```
+
+Only one slot is treated as active at a time. The active slot is tracked
+in Azure Key Vault:
+
+``` text
+acr-k3s-erpnext-dev-active-slot
+```
+
+The script always generates the replacement credential in the
+**inactive** slot first.
+
+Verified implementation:
+
+``` bash
+#!/bin/bash
+set -euo pipefail
+
+ACR="cruxeplatformuaen01"
+TOKEN="k3s-erpnext-dev"
+
+KV="kv-uxe-dev-uaen"
+PASSWORD_SECRET="acr-k3s-erpnext-dev-password"
+SLOT_SECRET="acr-k3s-erpnext-dev-active-slot"
+
+ERP_HOST="vm-uxe-dev-erpnext-01"
+ERP_USER="azureuser"
+ERP_KEY="/home/azureuser/.ssh/ssh-uxe-dev-erpnext-uaen.pem"
+
+TEST_IMAGE="cruxeplatformuaen01.azurecr.io/erpnext/dev:test-v16"
+
+echo "Authenticating to Azure..."
+timeout 30 az login --identity --output none
+
+CURRENT_SLOT=$(az keyvault secret show \
+  --vault-name "$KV" \
+  --name "$SLOT_SECRET" \
+  --query value \
+  -o tsv)
+
+case "$CURRENT_SLOT" in
+  password1)
+    NEW_SLOT="password2"
+    SLOT_ARG="--password2"
+    ;;
+  password2)
+    NEW_SLOT="password1"
+    SLOT_ARG="--password1"
+    ;;
+  *)
+    echo "ERROR: invalid current slot: $CURRENT_SLOT"
+    exit 1
+    ;;
+esac
+
+echo "Current credential: $CURRENT_SLOT"
+echo "Rotating to: $NEW_SLOT"
+
+NEW_PASSWORD=$(az acr token credential generate \
+  --name "$TOKEN" \
+  --registry "$ACR" \
+  "$SLOT_ARG" \
+  --days 180 \
+  --query 'passwords[0].value' \
+  --output tsv)
+
+if [ -z "$NEW_PASSWORD" ]; then
+  echo "ERROR: failed to generate new ACR password"
+  exit 1
+fi
+
+echo "Waiting for ACR credential propagation..."
+sleep 75
+
+echo "Updating K3s registry credential..."
+
+printf '%s\n' "$NEW_PASSWORD" | \
+ssh \
+  -i "$ERP_KEY" \
+  -o IdentitiesOnly=yes \
+  -o BatchMode=yes \
+  "$ERP_USER@$ERP_HOST" \
+  'read -r TOKEN_PWD
+
+   sudo tee /etc/rancher/k3s/registries.yaml >/dev/null <<EOF2
+configs:
+  "cruxeplatformuaen01.azurecr.io":
+    auth:
+      username: "k3s-erpnext-dev"
+      password: "${TOKEN_PWD}"
+EOF2
+
+   sudo chown root:root /etc/rancher/k3s/registries.yaml
+   sudo chmod 600 /etc/rancher/k3s/registries.yaml
+
+   sudo systemctl restart k3s
+
+   for i in $(seq 1 30); do
+     if kubectl get node vm-uxe-dev-erpnext-01 \
+       -o jsonpath="{.status.conditions[?(@.type==\"Ready\")].status}" \
+       | grep -q True; then
+       break
+     fi
+     sleep 5
+   done
+
+   sudo k3s crictl pull \
+     cruxeplatformuaen01.azurecr.io/erpnext/dev:test-v16
+  '
+
+echo "K3s ACR pull validation successful."
+
+EXPIRY=$(date -u -d '+180 days' +'%Y-%m-%dT%H:%M:%SZ')
+
+echo "Updating Key Vault..."
+
+az keyvault secret set \
+  --vault-name "$KV" \
+  --name "$PASSWORD_SECRET" \
+  --value "$NEW_PASSWORD" \
+  --output none
+
+az keyvault secret set-attributes \
+  --vault-name "$KV" \
+  --name "$PASSWORD_SECRET" \
+  --expires "$EXPIRY" \
+  --output none
+
+az keyvault secret set \
+  --vault-name "$KV" \
+  --name "$SLOT_SECRET" \
+  --value "$NEW_SLOT" \
+  --output none
+
+unset NEW_PASSWORD
+
+echo "========================================"
+echo "ACR credential rotation successful"
+echo "Active slot: $NEW_SLOT"
+echo "Next expiry: $EXPIRY"
+echo "========================================"
+```
+
+### Dual-Slot Rotation Logic
+
+The rotation process is intentionally designed so the current working
+credential is not overwritten before the replacement credential has been
+validated.
+
+``` text
+Read active slot from Key Vault
+        |
+        v
+Current = password1 ? -> generate password2
+Current = password2 ? -> generate password1
+        |
+        v
+Generate new inactive-slot password
+        |
+        v
+Wait 75 seconds for ACR propagation
+        |
+        v
+SSH to vm-uxe-dev-erpnext-01
+        |
+        v
+Update /etc/rancher/k3s/registries.yaml
+        |
+        v
+Set owner root:root and mode 600
+        |
+        v
+Restart K3s
+        |
+        v
+Wait for node Ready
+        |
+        v
+Test ACR pull using test-v16 image
+        |
+        +--> Failure -> script exits; Key Vault active slot is NOT changed
+        |
+        v
+Update Key Vault password secret
+        |
+        v
+Set new 180-day expiry
+        |
+        v
+Update active-slot secret
+        |
+        v
+Rotation complete
+```
+
+### ACR Token and Slot Selection
+
+ACR:
+
+``` text
+cruxeplatformuaen01
+```
+
+Token:
+
+``` text
+k3s-erpnext-dev
+```
+
+The script selects the inactive slot according to:
+
+  Current active slot   New generated slot
+  --------------------- --------------------
+  `password1`           `password2`
+  `password2`           `password1`
+
+Any other value causes the rotation to fail immediately:
+
+``` text
+ERROR: invalid current slot
+```
+
+This prevents the script from rotating against an unknown or
+inconsistent slot state.
+
+### New Credential Generation
+
+The replacement password is generated with:
+
+``` bash
+az acr token credential generate \
+  --name k3s-erpnext-dev \
+  --registry cruxeplatformuaen01 \
+  --password1-or-password2 \
+  --days 180
+```
+
+The script verifies that a non-empty password was returned before
+continuing.
+
+The generated credential is held only in the shell variable:
+
+``` text
+NEW_PASSWORD
+```
+
+and is removed from the shell environment with:
+
+``` bash
+unset NEW_PASSWORD
+```
+
+after the Key Vault update completes.
+
+### ACR Propagation Delay
+
+After generating the new slot, the script waits:
+
+``` text
+75 seconds
+```
+
+before attempting to use it:
+
+``` bash
+sleep 75
+```
+
+This allows time for the new ACR token credential to propagate before
+K3s is switched to it.
+
+### K3s Credential Update
+
+The CI/CD VM connects to the ERPNext VM using:
+
+``` text
+Host: vm-uxe-dev-erpnext-01
+User: azureuser
+SSH key: /home/azureuser/.ssh/ssh-uxe-dev-erpnext-uaen.pem
+```
+
+SSH is executed with:
+
+``` text
+IdentitiesOnly=yes
+BatchMode=yes
+```
+
+The new password is passed through standard input rather than as a
+command-line argument.
+
+K3s registry configuration is rewritten at:
+
+``` text
+/etc/rancher/k3s/registries.yaml
+```
+
+Resulting structure:
+
+``` yaml
+configs:
+  "cruxeplatformuaen01.azurecr.io":
+    auth:
+      username: "k3s-erpnext-dev"
+      password: "<new active credential>"
+```
+
+The file is then secured with:
+
+``` bash
+sudo chown root:root /etc/rancher/k3s/registries.yaml
+sudo chmod 600 /etc/rancher/k3s/registries.yaml
+```
+
+### K3s Restart and Readiness Check
+
+After the registry credential is updated:
+
+``` bash
+sudo systemctl restart k3s
+```
+
+The script checks node readiness for up to 30 iterations:
+
+``` text
+30 checks x 5 seconds
+= up to approximately 150 seconds
+```
+
+Readiness condition:
+
+``` text
+.status.conditions[?(@.type=="Ready")].status == True
+```
+
+### ACR Pull Validation
+
+Before updating Key Vault state, the script validates the new credential
+by pulling:
+
+``` text
+cruxeplatformuaen01.azurecr.io/erpnext/dev:test-v16
+```
+
+using:
+
+``` bash
+sudo k3s crictl pull \
+  cruxeplatformuaen01.azurecr.io/erpnext/dev:test-v16
+```
+
+This is the most important safety gate in the rotation sequence.
+
+If the image pull fails, `set -euo pipefail` causes the script to
+terminate before:
+
+-   overwriting the Key Vault password secret,
+-   changing the Key Vault active-slot value,
+-   declaring the new credential active.
+
+### Key Vault Update Order
+
+Only after the K3s pull succeeds does the script update Key Vault.
+
+The order is:
+
+``` text
+1. Store the new password
+2. Set password-secret expiry to +180 days
+3. Change active-slot secret to the new slot
+```
+
+Commands:
+
+``` bash
+az keyvault secret set \
+  --vault-name kv-uxe-dev-uaen \
+  --name acr-k3s-erpnext-dev-password \
+  --value "$NEW_PASSWORD"
+
+az keyvault secret set-attributes \
+  --vault-name kv-uxe-dev-uaen \
+  --name acr-k3s-erpnext-dev-password \
+  --expires "$EXPIRY"
+
+az keyvault secret set \
+  --vault-name kv-uxe-dev-uaen \
+  --name acr-k3s-erpnext-dev-active-slot \
+  --value "$NEW_SLOT"
+```
+
+The next expiry is calculated as:
+
+``` text
+current UTC time + 180 days
+```
+
+### Rotation Failure Safety
+
+The implemented order is intentionally fail-safe:
+
+``` text
+Generate new credential
+      |
+      v
+Update K3s
+      |
+      v
+Test pull
+      |
+      +---- failure ----> STOP
+      |                  Key Vault still points to previous active slot
+      |
+      v
+Update Key Vault
+```
+
+This greatly reduces the risk of recording an unvalidated credential as
+active.
+
+However, if a failure occurs **after K3s has been updated but before Key
+Vault has been updated**, K3s may already be using the new credential
+while Key Vault still records the previous slot. In that situation,
+operators must inspect both the live `registries.yaml` and ACR slot
+state before retrying rotation.
+
+### Post-Rotation Verification
+
+Verify active slot:
+
+``` bash
+az keyvault secret show \
+  --vault-name kv-uxe-dev-uaen \
+  --name acr-k3s-erpnext-dev-active-slot \
+  --query value \
+  -o tsv
+```
+
+Verify password-secret expiry:
+
+``` bash
+az keyvault secret show \
+  --vault-name kv-uxe-dev-uaen \
+  --name acr-k3s-erpnext-dev-password \
+  --query 'attributes.expires || attributes.expiresOn' \
+  -o tsv
+```
+
+Verify K3s:
+
+``` bash
+ssh \
+  -i /home/azureuser/.ssh/ssh-uxe-dev-erpnext-uaen.pem \
+  -o IdentitiesOnly=yes \
+  azureuser@vm-uxe-dev-erpnext-01 \
+  'sudo systemctl is-active k3s && kubectl get node'
+```
+
+Verify ACR pull:
+
+``` bash
+ssh \
+  -i /home/azureuser/.ssh/ssh-uxe-dev-erpnext-uaen.pem \
+  -o IdentitiesOnly=yes \
+  azureuser@vm-uxe-dev-erpnext-01 \
+  'sudo k3s crictl pull cruxeplatformuaen01.azurecr.io/erpnext/dev:test-v16'
+```
+
+Do not display the password contained in
+`/etc/rancher/k3s/registries.yaml` during routine verification.
+
+### Systemd Service
+
+Service unit:
+
+``` text
+/etc/systemd/system/erpnext-acr-token-check.service
+```
+
+Verified configuration:
+
+``` ini
+[Unit]
+Description=Check ERPNext ACR token expiry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=azureuser
+ExecStart=/usr/local/sbin/check-erpnext-acr-token-expiry.sh
+```
+
+Important behavior:
+
+-   Runs as `azureuser`.
+-   Uses a `oneshot` service.
+-   Waits for `network-online.target`.
+-   Executes the expiry-check script once per timer activation.
+-   Exits after the check/rotation action finishes.
+
+Check service state:
+
+``` bash
+systemctl status erpnext-acr-token-check.service --no-pager
+```
+
+Review logs:
+
+``` bash
+journalctl \
+  -u erpnext-acr-token-check.service \
+  -n 50 \
+  --no-pager
+```
+
+### Systemd Timer
+
+Timer unit:
+
+``` text
+/etc/systemd/system/erpnext-acr-token-check.timer
+```
+
+Verified configuration:
+
+``` ini
+[Unit]
+Description=Daily ERPNext ACR token expiry check
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=erpnext-acr-token-check.service
+
+[Install]
+WantedBy=timers.target
+```
+
+The expiry check runs daily at approximately:
+
+``` text
+08:00 to 08:10
+```
+
+because `RandomizedDelaySec=10m` adds up to ten minutes of randomized
+delay.
+
+`Persistent=true` means a missed timer activation can run after the
+timer becomes active again.
+
+Verify the timer:
+
+``` bash
+systemctl status erpnext-acr-token-check.timer --no-pager
+systemctl list-timers --all | grep erpnext-acr
+```
+
+Enable it if required:
+
+``` bash
+sudo systemctl enable --now erpnext-acr-token-check.timer
+```
+
+### Manual Validation
+
+Run the check as the same account used by systemd:
+
+``` bash
+sudo -u azureuser /usr/local/sbin/check-erpnext-acr-token-expiry.sh
+```
+
+Expected output when outside the rotation window:
+
+``` text
+Checking ERPNext K3s ACR credential...
+Expiry: <expiration timestamp>
+Days remaining: <number>
+No rotation required.
+```
+
+Inside the rotation window:
+
+``` text
+Credential is within rotation window.
+```
+
+and the script invokes:
+
+``` text
+/usr/local/sbin/rotate-erpnext-acr-token.sh
+```
+
+### Failure Conditions
+
+  ---------------------------------------------------------------------
+  Condition                          Result
+  ---------------------------------- ----------------------------------
+  Managed Identity login takes more  Timeout / service failure
+  than 30 seconds                    
+
+  Key Vault query takes more than 30 Timeout / service failure
+  seconds                            
+
+  Secret expiry is missing           Exit `1`
+
+  Credential is already expired      Exit `1`
+
+  Rotation script fails              Check service fails because
+                                     `set -e` is enabled
+  ---------------------------------------------------------------------
+
+Investigate failures with:
+
+``` bash
+systemctl status erpnext-acr-token-check.service --no-pager
+
+journalctl \
+  -u erpnext-acr-token-check.service \
+  -n 100 \
+  --no-pager
+```
+
+### Why Rotation Matters
+
+Existing ERPNext pods can continue running with already-present images
+even if the ACR credential later becomes invalid. The failure may only
+appear during a future rollout:
+
+``` text
+New ERPNext image
+      |
+      v
+K3s/containerd image pull
+      |
+      v
+Expired/invalid ACR credential
+      |
+      v
+401 Unauthorized
+      |
+      v
+ErrImagePull / ImagePullBackOff
+```
+
+The daily expiry check therefore protects future deployments from an
+unnoticed credential expiry.
+
+### Security Requirements
+
+-   Never commit ACR passwords or tokens to Git.
+-   Never include secret values in this README.
+-   Store the managed credential in `kv-uxe-dev-uaen`.
+-   Use the CI/CD VM Managed Identity for Azure authentication.
+-   Maintain an explicit expiration date.
+-   Run the expiry check daily.
+-   Begin rotation at 30 days or less remaining.
+-   Validate the replacement credential before retiring the previous
+    credential.
+-   Monitor systemd failures.
+-   Validate ACR image pulling after every rotation.
+
 ## K3s Runtime Validation
 
 Check workloads:
@@ -793,33 +1646,36 @@ Argo CD path.
 
 ## Important Paths
 
-  -----------------------------------------------------------------------------------------
-  Purpose                   Path / name
-  ------------------------- ---------------------------------------------------------------
-  ERPNext app repository    `~/git/erpnext-app`
+  ---------------------------------------------------------------------------------
+  Purpose           Path / name
+  ----------------- ---------------------------------------------------------------
+  ERPNext app       `~/git/erpnext-app`
+  repository        
 
-  GitOps repository         `~/git/erpnext-gitops`
+  GitOps repository `~/git/erpnext-gitops`
 
-  GitHub runner             `/data/github-runners/erpnext-app`
+  GitHub runner     `/data/github-runners/erpnext-app`
 
-  DEV kubeconfig from CI/CD `~/erpnext-dev-kubeconfig.yaml`
-  VM                        
+  DEV kubeconfig    `~/erpnext-dev-kubeconfig.yaml`
+  from CI/CD VM     
 
-  ERPNext host backups      `/data-disk/erpnext-sites/dev-erpnext.uxe.ai/private/backups`
+  ERPNext host      `/data-disk/erpnext-sites/dev-erpnext.uxe.ai/private/backups`
+  backups           
 
-  MariaDB host data         `/db-disk/mariadb`
+  MariaDB host data `/db-disk/mariadb`
 
-  ERPNext sites host data   `/data-disk/erpnext-sites`
+  ERPNext sites     `/data-disk/erpnext-sites`
+  host data         
 
-  K3s registry              `/etc/rancher/k3s/registries.yaml`
-  configuration             
+  K3s registry      `/etc/rancher/k3s/registries.yaml`
+  configuration     
 
-  GitOps SSH key            `~/.ssh/github_cicd`
+  GitOps SSH key    `~/.ssh/github_cicd`
 
-  ACR                       `cruxeplatformuaen01.azurecr.io`
+  ACR               `cruxeplatformuaen01.azurecr.io`
 
-  Key Vault                 `kv-uxe-dev-uaen`
-  -----------------------------------------------------------------------------------------
+  Key Vault         `kv-uxe-dev-uaen`
+  ---------------------------------------------------------------------------------
 
 ## Troubleshooting
 
